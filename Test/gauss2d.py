@@ -23,3 +23,5 @@ def generate_random_molecules(num_molecules = 100, image_size = (512, 512)):
         image += gauss2d(x, y, xo, yo)
     return image
 
+def local_maxima_2d():
+    pass
