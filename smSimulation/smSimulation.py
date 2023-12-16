@@ -8,7 +8,7 @@ def gauss2d(data_array, intensity, background, center, st_deviation):
     y_array, x_array = data_array
     yo, xo = center
     x_sd, y_sd = st_deviation
-    return background + intensity * np.exp( -(1/2) * ( (x_array-xo)**2 / x_sd + (y_array-yo)**2 / y_sd ))
+    return background + intensity * np.exp( -(1/2) * ( (x_array-xo)**2 / x_sd**2 + (y_array-yo)**2 / y_sd**2 ))
 #smGenerators
 #== Generates a single image of single molecules with the option to vary noise, intensity, number of molecules, and array size
 def generate_random_molecules(num_molecules = 100, array_size = (512, 512), noise = True, vary_intensity = True, vary_sigma = True):
