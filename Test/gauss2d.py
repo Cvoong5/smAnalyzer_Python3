@@ -12,34 +12,10 @@ def gauss2d(data_array, intensity, background, center, st_deviation):
 #smGenerators
 #== Generates a single image of single molecules with the option to vary noise, intensity, number of molecules, and array size
 def generate_random_molecules(num_molecules = 100, array_size = (512, 512), noise = True, vary_intensity = True, vary_sigma = True):
-# Create an empty 512x512 image array 
-    background = 0
-    intensity = np.random.randint(1, 100)
-    sigma = np.random.randint(0, 3)
-    if noise == False:
-        array = np.zeros(array_size)
-    elif noise == True:
-        noise = np.random.randint(0, intensity - 1)
-        array = np.random.poisson(lam = noise, size = array_size)
-    row, col = array.shape
-    x, y = np.meshgrid(np.arange(col), np.arange(row))
-    data_type = array.dtype
-#Perform matrix operations to randomize spot localization
-    for idx in range(num_molecules):
-        if vary_sigma == True:
-            sigma = np.random.randint(0, 3)
-            std_dev = (sigma, sigma)
-        if vary_sigma == False:
-            std_dev = (sigma, sigma)
-        center = (np.random.randint(0, row), np.random.randint(0, col))
-        if vary_intensity == True:
-            variable_intensity = np.random.randint(0, intensity)
-            gauss = gauss2d([y, x], variable_intensity, background, center, std_dev).astype(data_type)
-        elif vary_intensity == False:
-            gauss = gauss2d([y, x], intensity, background, center, std_dev).astype(data_type)
-        true_yx[idx] = center
-        array += gauss
-    return array
+#Function to generate a 2D Gaussian
+def gauss2d(dimension, normalization, intensity, y_center, x_center, y_sd, x_sd):
+    y , x = dimension
+    return intensity + normalization * np.exp( -(1/2) * ( (x-x_center)**2 / x_sd + (y-y_center)**2 / y_sd ))
 #== Generates the desired number of coordinates on a desired array
 def generate_random_coordinates(num_coordinates = 100, array_size = (512, 512)):
     coordinates = np.zeros((num_coordinates, 2))
