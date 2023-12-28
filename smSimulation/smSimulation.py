@@ -30,14 +30,13 @@ def generate_random_molecules(num_molecules = 100, array_size = (512, 512), nois
             sigma = np.random.randint(0, 3)
             std_dev = (sigma, sigma)
         if vary_sigma == False:
-            std_dev = (sigma, sigma)
+            std_dev = (1, 1)
         center = (np.random.randint(0, row), np.random.randint(0, col))
         if vary_intensity == True:
             variable_intensity = np.random.randint(0, intensity)
             gauss = gauss2d([y, x], variable_intensity, background, center, std_dev).astype(data_type)
         elif vary_intensity == False:
             gauss = gauss2d([y, x], intensity, background, center, std_dev).astype(data_type)
-        true_yx[idx] = center
         array += gauss
     return array
 #== Generates the desired number of coordinates on a desired array
@@ -46,58 +45,62 @@ def generate_random_coordinates(num_coordinates = 100, array_size = (512, 512)):
     for idx in range(num_coordinates):
         coordinates[idx] = (np.random.randint(512), np.random.randint(512))
     return coordinates
-#== Generates background noise via the poisson distribution method
-def generate_background(array_size = (512, 512), limit = 1):
-    return np.random.poisson(lam = limit, size = array_size)
 #== Detecting the local maxima of single molecules
-def detect_coordinates_local_maxima(data):
+def detect_molecules(data, threshold = 0, edge = 1):
     row, col = data.shape
     coordinates = []
-    for y in range(6, row -6):
-        for x in range(6, col - 6):
-            xlow = np.sum(data[y, x - 6 : x + 6])
-            xmid = np.sum(data[y, x - 3 : x + 3])
-            xhigh = np.sum(data[y, x + 3 : x + 6])
-            ylow = np.sum(data[y - 6 : y + 6, x])
-            ymid = np.sum(data[y - 3 : y + 3, x])
-            yhigh = np.sum(data[y + 3 : y + 6, x])
-            if xmid > xlow and xmid > xhigh:
-                if ymid > ylow and ymid > yhigh:
+    for y in range(edge, row - edge):
+        for x in range(edge, col - edge):
+            xlow = data[y, x - 1] 
+            xmid = data[y, x]
+            xhigh = data[y, x + 1]
+            ylow = data[y - 1, x]
+            ymid = data[y, x]
+            yhigh = data[y + 1, x]
+            if xmid > xlow and xmid > xhigh and xmid > threshold:
+                if ymid > ylow and ymid > yhigh and ymid > threshold:
                     coordinates.append((y,x))
-                elif ymid > ylow and ymid == yhigh:
-                    for y2 in range(3, row - 6):
-                        y2mid = np.sum(data[y2 - 3 : y2 + 3, x])
-                        y2high = np.sum(data[y2 + 3: y + 6, x])
-                        if y2mid > y2high:
+                elif ymid > ylow and ymid == yhigh and ymid > threshold:
+                    for y2 in range(row - edge):
+                        y2mid = data[y2, x]
+                        y2high = data[y2 + edge, x]
+                        if y2mid > y2high and y2mid > threshold:
                             coordinates.append((y2, x))
-            elif xmid > xlow and xmid == xhigh:
-                for x2 in range(3, col - 6):
-                    x2mid = np.sum(data[y, x2 - 3 : x2 + 3])
-                    x2high = np.sum(data[y, x2 + 3 : x2 + 6])
-                    if x2mid > x2high:
-                        coordinates.append((y, x2))
+            elif xmid > xlow and xmid == xhigh and xmid > threshold:
+                if ymid > ylow and ymid > yhigh and ymid > threshold:
+                    for x2 in range(col - edge):
+                        x2mid = data[y, x2]
+                        x2high = data[y, x2 + edge]
+                        if x2mid > x2high and x2mid > threshold:
+                            coordinates.append((y, x2))
+    return coordinates
+
+def generate_dynamics():
+    yx_coordinates = generate_random_coordinates(num_coordinates = 25)
+    x, y = np.meshgrid(np.arange(512), np.arange(512))
+    frames = 1000
+    movie = np.zeros((frames, 512, 512)).astype(np.uint16)
+    for frame in range(frames):
+        progress = round(100*(frame/frames), 1)
+        if frame % 10 == 0:
+            print(f"{progress} %")
+        image = np.zeros((512,512)).astype(np.uint16)
+        array_shape = image.shape
+
+        for idx in range(len(yx_coordinates)):
+            binding = np.random.randint(0, 3) 
+            if binding == 0:
+               pass
+            else:
+               gauss = gauss2d((y, x), 1000, 0, yx_coordinates[idx], (1, 1)).astype(np.uint16)
+               image += gauss
+        mean_bg = 500
+        background = np.random.randint(low = np.max(image)*1  , high = np.max(image)*2 , size = (512, 512)).astype(np.uint16)
+        background += image
+        movie[frame] = background
+
+    tifffile.imwrite("test_movie.tif", movie, dtype = np.uint16)
 
 
 
 
-
-
-#==Development
-#=== Trying to develop a stack with randomize on/off intensities at defined coordinates in a noise-simulated environment
-yx_coordinates = generate_random_coordinates(num_coordinates = 1000)
-background = generate_background(limit = 1000).astype(np.int64)
-
-row, col = background.shape
-x, y = np.meshgrid(np.arange(col), np.arange(row))
-for idx in range(len(yx_coordinates)):
-    gauss = gauss2d((y, x), 500, 0, yx_coordinates[idx], (1, 1)).astype(np.int64)
-    background += gauss
-
-plt.imshow(background)
-plt.show()
-
-#==To develop
-#===Fitting detected single molecules with a 2D Gaussian as a way to:
-#==== Find the true center
-#==== Smooth single molecule if there isn't a defined maxima within the standard deviation (2 peaks nearby and are not categorized as two separate peaks)
-#==== Optional accept or reject spot based on characteristics of single molecule
