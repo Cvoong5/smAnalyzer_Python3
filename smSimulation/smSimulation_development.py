@@ -222,9 +222,9 @@ np.random.seed(1234)
 data, coordinates_gt = generate_random_molecules()
 bg_sub, bg = TemporalMedianFilter(data, radius = 3)
 coordinates_est1 = detect_molecules(bg_sub, threshold = 25)
-
 fit_set = gauss2d_smFit(coordinates_est1)
 gauss2dFit_draw_circles(bg_sub, fit_set)
 
+    
 
 
