@@ -47,7 +47,7 @@ def detect(data, threshold = 0):
                             coordinates.append((y, x2))
     return coordinates
 #== Gaussian function
-def gauss2d(array, intensity, backgorund, yo, xo, ysd, xsd):
+def gauss2d(array, intensity, background, yo, xo, ysd, xsd):
     yarray, xarray = array
     return background + intensity * np.exp(-(0.5) * (xarray - xo)**2/xsd**2 + (yarray - yo)**2/ysd**2)
 #== Temporal Median FIltering, return background subtracted image and background
@@ -167,7 +167,7 @@ def TemporalMedianFilter(image, radius = 3):
                 bg_sub[yb, xb] = 0
     return bg_sub, background
 #== Extract gauss2d parameters from single molecule, return gauss2d input and covariance
-def gauss2d_Fit(coordinates, radius = 3):
+def gauss2d_Fit(data, coordinates, radius = 3):
     slice_shape = (2*radius + 1, 2*radius + 1)
     fit_set = []
     for coord in coordinates:
@@ -176,14 +176,44 @@ def gauss2d_Fit(coordinates, radius = 3):
         if Z.shape == slice_shape:
             X, Y = np.meshgrid(np.arange(y - radius, y + radius + 1), np.arange(x - radius, x + radius + 1))
             try:
-                estimate = [0, 0, y, x, 2, 2] #Intensity, Background, Y center, X center, Y std, X std
+                estimate = [0, 0, y, x, 0, 0] #Intensity, Background, Y center, X center, Y std, X std
                 fit_set.append(curve_fit(f = gauss2d, xdata = (np.ravel(X), np.ravel(Y)), ydata = np.ravel(Z), p0 = estimate))
             except RuntimeError:
+                fit_set.append([0,0,0,0,0,0], [0,0,0,0,0,0])
                 print(f"Could not fit {coord}")
         else:
             print(f"{coord} too close edge of image")
             continue
-        
     return fit_set #[[Parameters], [Covariances]]
+def transform(image, angle, yoffset, xoffset, flip = None):
+     #flip = h for horizontal or v for vertical 
+        shifted_image = np.zeros_like(image)
+        row, col = image.shape
+        ycenter = row//2
+        xcenter = col//2
+        theta = np.radians(angle)
+        print(f"Angle = {angle}\nx offset = {xoffset}\ny offset = {yoffset}\nflip = {flip}")
+        if flip != None:
+            if flip == "h" or "horizontal":
+                image = np.flip(image, 1)
+            elif flip == "v" or "vertical":
+                image = np.flip(image, 0)
+            else:
+                print("invalid flip option")
+                pass
+        #Mathematical explanation for image rotation
+            #Translation along the origin: x - xcenter, y - ycenter
+            #Rotation transformation: x coordinates = (x translation)*cos(theta) - (y translation)*sin(theta), y coordinates = (x translation)*sin(theta) + (y translation)*cos(theta)
+            #Reorient the coordinates: Rotation transformation on each axis + center coordinates
+        for y in range(row):
+                for x in range(col):
+                                                #Translation, rotation, reorient, offset
+                        x_shift = int(((x-xcenter)*np.cos(theta) - (y-ycenter)*np.sin(theta) + xcenter) + xoffset)
+                        y_shift = int(((x-xcenter)*np.sin(theta) + (y-ycenter)*np.cos(theta) + ycenter) + yoffset)
+                        if y_shift >= 0 and y_shift < row and x_shift >= 0 and x_shift < col:
+                                shifted_image[y, x] = image[y_shift, x_shift]
+        return shifted_image
 
+def extract():
+    pass
 
