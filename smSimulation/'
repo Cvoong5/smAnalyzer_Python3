@@ -1,0 +1,78 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from scipy.optimize import curve_fit
+
+#Core function to generate single molecules
+def gauss2d(data_array, intensity, background, center, st_deviation):
+    y_array, x_array = data_array
+    yo, xo = center
+    x_sd, y_sd = st_deviation
+    return background + intensity * np.exp( -(1/2) * ( (x_array-xo)**2 / x_sd**2 + (y_array-yo)**2 / y_sd**2 ))
+#smGenerators
+#== Generates a single image of single molecules with the option to vary noise, intensity, number of molecules, and array size
+def generate_random_molecules(num_molecules = 100, array_size = (512, 512), noise = True, vary_intensity = True, vary_sigma = True):
+# Create an empty 512x512 image array 
+    background = 0
+    intensity = np.random.randint(1, 100)
+    sigma = np.random.randint(0, 3)
+    if noise == False:
+        array = np.zeros(array_size)
+    elif noise == True:
+        noise = np.random.randint(0, intensity - 1)
+        array = np.random.poisson(lam = noise, size = array_size)
+    row, col = array.shape
+    x, y = np.meshgrid(np.arange(col), np.arange(row))
+    data_type = array.dtype
+#Perform matrix operations to randomize spot localization
+    for idx in range(num_molecules):
+        if vary_sigma == True:
+            sigma = np.random.randint(0, 3)
+            std_dev = (sigma, sigma)
+        if vary_sigma == False:
+            std_dev = (sigma, sigma)
+        center = (np.random.randint(0, row), np.random.randint(0, col))
+        if vary_intensity == True:
+            variable_intensity = np.random.randint(0, intensity)
+            gauss = gauss2d([y, x], variable_intensity, background, center, std_dev).astype(data_type)
+        elif vary_intensity == False:
+            gauss = gauss2d([y, x], intensity, background, center, std_dev).astype(data_type)
+        true_yx[idx] = center
+        array += gauss
+    return array
+#== Generates the desired number of coordinates on a desired array
+def generate_random_coordinates(num_coordinates = 100, array_size = (512, 512)):
+    coordinates = np.zeros((num_coordinates, 2))
+    for idx in range(num_coordinates):
+        coordinates[idx] = (np.random.randint(512), np.random.randint(512))
+    return coordinates
+#== Detecting the local maxima of single molecules
+def detect_molecules(data):
+    row, col = data.shape
+    coordinates = []
+    for y in range(1, row -1):
+        for x in range(1, col - 1):
+            xlow = np.sum(data[y, x - 1 ])
+            xmid = np.sum(data[y, x])
+            xhigh = np.sum(data[y, x + 1])
+            ylow = np.sum(data[y - 1, x])
+            ymid = np.sum(data[y, x])
+            yhigh = np.sum(data[y + 1, x])
+            if xmid > xlow and xmid > xhigh:
+                if ymid > ylow and ymid > yhigh:
+                    coordinates.append((y,x))
+                elif ymid > ylow and ymid == yhigh:
+                    for y2 in range(row - 1):
+                        y2mid = np.sum(data[y2, x])
+                        y2high = np.sum(data[y2 + 1, x])
+                        if y2mid > y2high:
+                            coordinates.append((y2, x))
+            elif xmid > xlow and xmid == xhigh:
+                for x2 in range(col - 1):
+                    x2mid = np.sum(data[y, x2])
+                    x2high = np.sum(data[y, x2 + 1])
+                    if x2mid > x2high:
+                        coordinates.append((y, x2))
+
+
+
