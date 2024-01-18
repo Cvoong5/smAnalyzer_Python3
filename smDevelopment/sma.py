@@ -4,6 +4,7 @@ import tifffile
 import nd2
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
+import tabulate
 
 #== Reading in movies, return movie, summed_image
 def imread(file_name):
@@ -135,8 +136,9 @@ def TemporalMedianFilter(image, radius = 3):
 #== Start of filter
     row, col = image.shape
     background = np.zeros_like(image)
+    counter = 0
     for y in range(radius, row - radius - 1):
-        print(f"row {y}")
+        counter += 1
         for x in range(radius, col - radius - 1):
             image_slice = image[y - radius : y + radius + 1, x - radius : x + radius + 1]
             if image_slice.shape != (2*radius + 1, 2*radius + 1):
@@ -170,6 +172,7 @@ def TemporalMedianFilter(image, radius = 3):
 def gauss2d_Fit(data, coordinates, radius = 3):
     slice_shape = (2*radius + 1, 2*radius + 1)
     fit_set = []
+    fit_coordinate = []
     for coord in coordinates:
         y, x = coord
         Z = data[y - radius: y + radius + 1, x - radius: x + radius + 1]
@@ -177,14 +180,18 @@ def gauss2d_Fit(data, coordinates, radius = 3):
             X, Y = np.meshgrid(np.arange(y - radius, y + radius + 1), np.arange(x - radius, x + radius + 1))
             try:
                 estimate = [0, 0, y, x, 0, 0] #Intensity, Background, Y center, X center, Y std, X std
-                fit_set.append(curve_fit(f = gauss2d, xdata = (np.ravel(X), np.ravel(Y)), ydata = np.ravel(Z), p0 = estimate))
+                fit = curve_fit(f = gauss2d, xdata = (np.ravel(X), np.ravel(Y)), ydata = np.ravel(Z), p0 = estimate)
+                fit_set.append(fit)
+                fit_coordinate.append((fit[0][2], fit[0][3]))
             except RuntimeError:
                 fit_set.append([0,0,0,0,0,0], [0,0,0,0,0,0])
+                fit_coordinate.append((0, 0))
                 print(f"Could not fit {coord}")
         else:
             print(f"{coord} too close edge of image")
             continue
-    return fit_set #[[Parameters], [Covariances]]
+    return fit_set, fit_coordinate #[[Parameters], [Covariances]]
+    return
 def transform(image, angle, yoffset, xoffset, flip = None):
      #flip = h for horizontal or v for vertical 
         shifted_image = np.zeros_like(image)
@@ -213,7 +220,98 @@ def transform(image, angle, yoffset, xoffset, flip = None):
                         if y_shift >= 0 and y_shift < row and x_shift >= 0 and x_shift < col:
                                 shifted_image[y, x] = image[y_shift, x_shift]
         return shifted_image
+#== Extract information from movie at respective coordinates
+    #== Add a visual way to look at intensity traces, summed spot, and spots at certain frames.
+def lbp_filter(time_series):
+    frame, intensity, background = time_series.columns
+    #== Time series is a pandas data frame
+    #=== Col#1 = frame, col#2 = intensity, col#3 = background
+    
+    #== Time series from extract_intensity in the form of a data frame
+    lbp_list = []
+    for index in range(1, len(time_series)):
+        spot_frame = time_series.loc[index, frame]
+        spot_intensity = time_series.loc[index, intensity] - time_series.loc[index - 1, intensity]
+        spot_background = time_series.loc[index, background] - time_series.loc[index - 1, background]
+        dictionary = {frame: spot_frame, intensity: spot_intensity, background: spot_background}
+        lbp_list.append(dictionary)
+    df = pd.DataFrame(lbp_list)
+    return df 
 
-def extract():
-    pass
+def extract(data, coordinates, radius = 3, sigma = 1):
+    #== Data has to be the movie in which we are aiming to extract the intensity from. The coordinates can come from either the local maxima detection or the gaussian non-linear least squares fitting algorithm.
+    print("Extracting intensity values")
+    frame, row, col = data.shape
+    pad = int(radius - sigma)
+    #If full window size is 11 and spot window size occupies the center 3, what is the range?
+        #N-1/2 +/- 1
+         # [0, 1, 2, 3, 4, 5, 6, 7 ,8 ,9 , 10]
+    frames = np.arange(frame)
+    summed_image = np.sum(data, axis = 0)
+    X, Y = np.meshgrid(np.arange(2*radius + 1), np.arange(2*radius + 1))
+    df_set = []
+
+    fig = plt.figure()
+    ax_spot = fig.add_subplot(321)
+    ax_surface = fig.add_subplot(322, projection = '3d')
+    ax_traces = fig.add_subplot(312)
+    ax_filtered = fig.add_subplot(313)
+    if np.min(data) == 0:
+        data += 1
+    for coord in coordinates:
+        yo, xo =  coord 
+        y = int(yo)
+        x = int(xo)
+        intensity_vals = []
+        try:
+            summed_spot = summed_image[y - radius : y + radius + 1, x - radius : x + radius + 1]
+            for z in range(frame):
+                spot_full = data[z, y - radius : y + radius + 1, x - radius : x + radius + 1]
+                spot_window = np.pad(array = data[z, y - sigma: y + sigma + 1, x - sigma: x + sigma + 1], pad_width = pad, mode = 'constant', constant_values = 0)
+                background = spot_full - spot_window
+                spot_intensity = np.mean(spot_window[spot_window != 0])
+                background_intensity = np.mean(background[background != 0])
+                intensity_vals.append({"frame": z + 1, "spot_intensity": spot_intensity, "background": background_intensity})
+
+                #Average to fit within 10 frames
+                #3D Gaussian
+                #Summed_image
+        except (TypeError, ValueError):
+            if TypeError:
+                print("Type error")
+                continue
+            elif ValueError:
+                print("Shape error")
+                continue
+            continue
+
+        data_frame = pd.DataFrame(intensity_vals)
+        df_set.append(data_frame)
+        filtered_data = lbp_filter(data_frame)
+#        data_frame.to_csv(f"spot_{y}_{x}.csv", index = False)
+
+        ax_spot.clear()
+        ax_surface.clear()
+        ax_traces.clear()
+        ax_filtered.clear()
+        fig.suptitle(f"spot_{y}_{x}")
+        ax_spot.imshow(summed_spot, cmap = "gray")
+        ax_spot.axis('off')
+        ax_surface.plot_surface(X, Y, summed_spot, cmap = "hot")
+        ax_spot.axis('off')
+        ax_traces.plot(data_frame["frame"], data_frame["spot_intensity"] - data_frame["background"])
+        ax_traces.set_xlabel("Frames")
+        ax_traces.set_ylabel("Intensity (bg subtracted)")
+        ax_filtered.plot(filtered_data["frame"], filtered_data["spot_intensity"] - filtered_data["background"])
+        ax_filtered.set_xlabel("Frames")
+        ax_filtered.set_ylabel("Intensity (bg subtracted)")
+#        #==Uncomment the following line of code for testing purposes
+        plt.draw()
+        plt.pause(1)
+        #==Uncomment the following line of code for final implementation
+        #plt.savefig(f"spot_{y}_{x}.jpg")
+
+    return df_set 
+
+
 
